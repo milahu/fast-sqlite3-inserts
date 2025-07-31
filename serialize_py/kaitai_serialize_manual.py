@@ -75,7 +75,7 @@ num_pages = 2
 # FIXME add extra space for database header
 _io = kaitaistruct.KaitaiStream(io.BytesIO(bytearray(num_pages * page_size + 100)))
 
-if 0:
+if 1:
     root = kaitaistruct_sqlite3.Sqlite3(_io)
 else:
     class PatchedSqlite3(kaitaistruct_sqlite3.Sqlite3):
@@ -167,6 +167,11 @@ page_number = 1
 root.pages = []
 # page = set_value("root.header.root_page", root.BtreePage(page_number))
 page = root.BtreePage(page_number)
+
+# try to fix root._write
+# https://github.com/kaitai-io/kaitai_struct/issues/1245
+page.cell_content_area__to_write = False
+
 root.pages.append(page)
 page.database_header = root.header
 page._root = root
@@ -362,11 +367,18 @@ write("root")
 
 
 
+# try to fix root._write
+# https://github.com/kaitai-io/kaitai_struct/issues/1245
+root.pages__to_write = False
+
 _io.seek(0) # fix: _write__seq does not seek before writing
 
-# no. _write calls _fetch_instances which throws
-# print(f"writing root"); root._write(_io)
-print(f"writing root"); root._write__seq(_io); root._io.write_back_child_streams()
+if 1:
+  # no. _write calls _fetch_instances which throws
+  # https://github.com/kaitai-io/kaitai_struct/issues/1245
+  print(f"writing root"); root._write(_io)
+else:
+  print(f"writing root"); root._write__seq(_io); root._io.write_back_child_streams()
 
 print("writing done")
 

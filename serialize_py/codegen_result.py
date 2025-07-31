@@ -8,6 +8,9 @@ def get_root(_io=None, check=True):
     if not _io:
         _io = kaitaistruct.KaitaiStream(io.BytesIO(bytearray(root_size)))
     root = kaitaistruct_sqlite3.Sqlite3(_io)
+    # try to fix root._write
+    # https://github.com/kaitai-io/kaitai_struct/issues/1245
+    root.pages__to_write = False
     root.header = kaitaistruct_sqlite3.Sqlite3.DatabaseHeader(root._io, root, root._root)
     header = root.header
     def init_header(header):
@@ -46,11 +49,13 @@ def get_root(_io=None, check=True):
 def get_io():
     root = get_root()
     _io = root._io
-    # no. _write calls _fetch_instances which throws
-    # root._write(_io)
-    root._write__seq(_io)
-    # root._fetch_instances() # this would throw
-    root._io.write_back_child_streams()
+    if 1:
+        # no. _write calls _fetch_instances which throws
+        root._write(_io)
+    else:
+        root._write__seq(_io)
+        # root._fetch_instances() # this would throw
+        root._io.write_back_child_streams()
     return _io
 
 def get_bytes():

@@ -38,7 +38,6 @@ class PagesList:
         ), f"page index is out of range: {i} is not in (0, {header.num_pages - 1})"
         # todo: maybe cache page
         # equality test: page_a.page_number == page_b.page_number
-        # FIXME handle root page: i == 0
         _pos = root._io.pos()
         if i == 0:
             # The first 100 bytes of the database file comprise the database file header
@@ -176,7 +175,7 @@ with open(good_database_path, "rb") as f:
 root = kaitaistruct_sqlite3.Sqlite3.from_bytes(good_database_header_bytes)
 
 # patch the internal cache attribute of root.pages
-# root._m_pages = PagesList(root)
+root._m_pages = PagesList(root)
 
 root._read()
 
@@ -309,6 +308,10 @@ def codegen(
         print(f"{ind}{ids}if not _io:", file=out)
         print(f"{ind}{ids}{ids}_io = kaitaistruct.KaitaiStream(io.BytesIO(bytearray(root_size)))", file=out)
         print(f"{ind}{ids}{on} = {mod}.{member}(_io)", file=out)
+        # TODO remove. this works only for sqlite3.ksy
+        print(f"{ind}{ids}# try to fix root._write", file=out)
+        print(f"{ind}{ids}# https://github.com/kaitai-io/kaitai_struct/issues/1245", file=out)
+        print(f"{ind}{ids}{on}.pages__to_write = False", file=out)
     # else:
     #     print(f"{ind}{ids}# non-root init", file=out)
     #     print(f"{ind}{ids}{on} = {mod}.{member}(_io, {on_parent}, {on_parent}._root)", file=out)
@@ -423,11 +426,13 @@ def codegen(
         print(f"{ind}{ids}root = get_root()", file=out)
         print(f"{ind}{ids}_io = root._io", file=out)
         # print(f"{ind}{ids}_io.seek(0)", file=out)
-        print(f"{ind}{ids}# no. _write calls _fetch_instances which throws", file=out)
-        print(f"{ind}{ids}# root._write(_io)", file=out)
-        print(f"{ind}{ids}root._write__seq(_io)", file=out)
-        print(f"{ind}{ids}# root._fetch_instances() # this would throw", file=out)
-        print(f"{ind}{ids}root._io.write_back_child_streams()", file=out)
+        print(f"{ind}{ids}if 1:", file=out)
+        print(f"{ind}{ids}{ids}# no. _write calls _fetch_instances which throws", file=out)
+        print(f"{ind}{ids}{ids}root._write(_io)", file=out)
+        print(f"{ind}{ids}else:", file=out)
+        print(f"{ind}{ids}{ids}root._write__seq(_io)", file=out)
+        print(f"{ind}{ids}{ids}# root._fetch_instances() # this would throw", file=out)
+        print(f"{ind}{ids}{ids}root._io.write_back_child_streams()", file=out)
         print(f"{ind}{ids}return _io", file=out)
         print("", file=out)
         print(f"{ind}def get_bytes():", file=out)
