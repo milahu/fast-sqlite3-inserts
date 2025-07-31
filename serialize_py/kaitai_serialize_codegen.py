@@ -166,8 +166,14 @@ if not os.path.exists(good_database_path):
   print(">", shlex.join(args))
   subprocess.run(args)
 
+database_header_size = 100
+
+with open(good_database_path, "rb") as f:
+  good_database_header_bytes = f.read(database_header_size)
+
 # create a database parser
-root = kaitaistruct_sqlite3.Sqlite3.from_file(good_database_path)
+# root = kaitaistruct_sqlite3.Sqlite3.from_file(good_database_path)
+root = kaitaistruct_sqlite3.Sqlite3.from_bytes(good_database_header_bytes)
 
 # patch the internal cache attribute of root.pages
 # root._m_pages = PagesList(root)
@@ -178,7 +184,7 @@ root._read()
 # now, this will parse **only** the first page
 # fix: 'BtreePage' object has no attribute 'cell_pointers'
 
-if 1:
+if 0:
     # print("root.pages[0] keys:", get_keys(root.pages[0]))
     # print("root.pages[0] seq:", get_seq(root.pages[0]))
     # FIXME kaitaistruct.ValidationNotEqualError: /types/database_header/seq/0: at pos 116: validation failed: not equal,
@@ -192,7 +198,7 @@ if 1:
     print_value("root.pages[0].num_cells")
     print_value("root.pages[0].cell_pointers[0]")
     print_value("root.pages[0].cell_pointers[0].ofs_content")
-if 1:
+if 0:
     # print("root.pages[1] keys:", get_keys(root.pages[1]))
     # print("root.pages[1] seq:", get_seq(root.pages[1]))
     print("root.pages[1]._read()"); root.pages[1]._read()
@@ -452,7 +458,8 @@ with open(codegen_database_path, "wb") as f:
 args = [
   "diff", "--color=always", "-u",
   "<(", "xxd", codegen_database_path, ")", # red
-  "<(", "xxd", good_database_path, ")", # green
+  # "<(", "xxd", good_database_path, ")", # green
+  f"<( head -c{database_header_size} {good_database_path} | xxd )", # green
   "|", "head", "-n100",
 ]
 args = ["bash", "-c", " ".join(args)]
