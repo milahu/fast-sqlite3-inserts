@@ -383,7 +383,6 @@ def codegen(
         print(f"{ind}{ids}{on}.{key} = {mod}.{root_cln}.{member}(root._io, {on}, {on}._root)", file=out) # long
         # avoid shadowing global variables
         local_key = get_local_key(key, global_names)
-        print(f"{ind}{ids}{local_key} = {on}.{key}", file=out)
         # print(f"{ind}{ids}if 1:", file=out) # no block scope
         # print(f"{ind}{ids}if {local_key} := {on}.{key}:", file=out) # no block scope
         # TypeError: 'int' object does not support the context manager protocol
@@ -406,7 +405,7 @@ def codegen(
             module_map,
             global_names,
         )
-        print(f"{ind}{ids}init_{key}({local_key})", file=out) # "init_" prefix
+        print(f"{ind}{ids}init_{key}({on}.{key})", file=out) # "init_" prefix
         # print(f"{ind}{ids}{key}_init({local_key})", file=out) # "_init" suffix
 
     # some user-defined types need this

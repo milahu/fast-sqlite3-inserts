@@ -12,7 +12,6 @@ def get_root(_io=None, check=True):
     # https://github.com/kaitai-io/kaitai_struct/issues/1245
     root.pages__to_write = False
     root.header = kaitaistruct_sqlite3.Sqlite3.DatabaseHeader(root._io, root, root._root)
-    header = root.header
     def init_header(header):
         header.magic = b'SQLite format 3\x00'
         header.page_size_raw = 4096 # 0x1000
@@ -25,10 +24,9 @@ def get_root(_io=None, check=True):
         header.file_change_counter = 1
         header.num_pages = 2
         header.first_freelist_trunk_page = kaitaistruct_sqlite3.Sqlite3.FreelistTrunkPagePointer(root._io, header, header._root)
-        first_freelist_trunk_page = header.first_freelist_trunk_page
         def init_first_freelist_trunk_page(first_freelist_trunk_page):
             first_freelist_trunk_page.page_number = 0
-        init_first_freelist_trunk_page(first_freelist_trunk_page)
+        init_first_freelist_trunk_page(header.first_freelist_trunk_page)
         header.num_freelist_pages = 0
         header.schema_cookie = 1
         header.schema_format = 4
@@ -41,7 +39,7 @@ def get_root(_io=None, check=True):
         header.reserved_header_bytes = 20 * b'\x00'
         header.version_valid_for = 1
         header.sqlite_version_number = 3050001 # 0x2e8a11
-    init_header(header)
+    init_header(root.header)
     if check:
         root._check()
     return root
