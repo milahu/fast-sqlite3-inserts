@@ -338,13 +338,17 @@ class Sqlite3(ReadWriteKaitaiStruct):
             del self._m_ofs_cell_content_area
         @property
         def cell_content_area(self):
+            """We parse the first page separate from the 100 byte database header,
+            so for the first page, we have to subtract 100 from the offset,
+            to make the offset relative to our "page".
+            """
             if self._should_write_cell_content_area:
                 self._write_cell_content_area()
             if hasattr(self, '_m_cell_content_area'):
                 return self._m_cell_content_area
 
             _pos = self._io.pos()
-            self._io.seek(self.ofs_cell_content_area)
+            self._io.seek(((self.ofs_cell_content_area - 100) if (self.page_number == 1) else self.ofs_cell_content_area))
             self._m_cell_content_area = self._io.read_bytes((self._root.header.usable_size - self.ofs_cell_content_area))
             self._io.seek(_pos)
             return getattr(self, '_m_cell_content_area', None)
@@ -356,7 +360,7 @@ class Sqlite3(ReadWriteKaitaiStruct):
         def _write_cell_content_area(self):
             self._should_write_cell_content_area = False
             _pos = self._io.pos()
-            self._io.seek(self.ofs_cell_content_area)
+            self._io.seek(((self.ofs_cell_content_area - 100) if (self.page_number == 1) else self.ofs_cell_content_area))
             self._io.write_bytes(self.cell_content_area)
             self._io.seek(_pos)
 
