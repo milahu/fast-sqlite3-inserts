@@ -2,7 +2,7 @@ import io
 import kaitaistruct
 import kaitaistruct_sqlite3
 
-root_size = 100
+root_size = 8192
 
 def get_root(_io=None, check=True):
     if not _io:
