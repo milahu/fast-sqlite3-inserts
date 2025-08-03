@@ -7,11 +7,8 @@ root_size = 8192
 def get_root(_io=None, check=True):
     if not _io:
         _io = kaitaistruct.KaitaiStream(io.BytesIO(bytearray(root_size)))
-    root = kaitaistruct_sqlite3.Sqlite3(_io)
-    # try to fix root._write
-    # https://github.com/kaitai-io/kaitai_struct/issues/1245
-    root.pages__to_write = False
-    root.header = kaitaistruct_sqlite3.Sqlite3.DatabaseHeader(root._io, root, root._root)
+    root = kaitaistruct_sqlite3.Sqlite3(_io=_io, _parent=None, _root=None)
+    root.header = kaitaistruct_sqlite3.Sqlite3.DatabaseHeader(_io=root._io, _parent=root, _root=root._root)
     def init_header(header):
         header.magic = b'SQLite format 3\x00'
         header.page_size_raw = 4096 # 0x1000
@@ -23,9 +20,10 @@ def get_root(_io=None, check=True):
         header.leaf_payload_fraction = 32 # 0x20
         header.file_change_counter = 1
         header.num_pages = 2
-        header.first_freelist_trunk_page = kaitaistruct_sqlite3.Sqlite3.FreelistTrunkPagePointer(root._io, header, header._root)
+        header.first_freelist_trunk_page = kaitaistruct_sqlite3.Sqlite3.FreelistTrunkPagePointer(_io=root._io, _parent=header, _root=header._root)
         def init_first_freelist_trunk_page(first_freelist_trunk_page):
             first_freelist_trunk_page.page_number = 0
+            first_freelist_trunk_page.page = None
         init_first_freelist_trunk_page(header.first_freelist_trunk_page)
         header.num_freelist_pages = 0
         header.schema_cookie = 1
@@ -40,6 +38,33 @@ def get_root(_io=None, check=True):
         header.version_valid_for = 1
         header.sqlite_version_number = 3050001 # 0x2e8a11
     init_header(root.header)
+    root.pages = []
+    root.pages.append(kaitaistruct_sqlite3.Sqlite3.BtreePage(page_number=1, _io=root._io, _parent=root, _root=root._root))
+    def init_page(page):
+        page.page_type = kaitaistruct_sqlite3.Sqlite3.BtreePageType.table_leaf_page # 13 = 0xd
+        page.first_freeblock = 0
+        page.num_cells = 1
+        page.ofs_cell_content_area_raw = 4044 # 0xfcc
+        page.num_frag_free_bytes = 0
+        page.cell_pointers = []
+        page.cell_pointers.append(kaitaistruct_sqlite3.Sqlite3.CellPointer(_io=root._io, _parent=page, _root=page._root))
+        def init_cell_pointer(cell_pointer):
+            cell_pointer.ofs_content = 4044 # 0xfcc
+        init_cell_pointer(page.cell_pointers[0])
+        page.cell_content_area = b'2\x01\x06\x17\x15\x15\x01Itabletesttest\x02CREATE TABLE test (id INTEGER)'
+        page.reserved_space = None
+    init_page(root.pages[0])
+    root.pages.append(kaitaistruct_sqlite3.Sqlite3.BtreePage(page_number=2, _io=root._io, _parent=root, _root=root._root))
+    def init_page(page):
+        page.page_type = kaitaistruct_sqlite3.Sqlite3.BtreePageType.table_leaf_page # 13 = 0xd
+        page.first_freeblock = 0
+        page.num_cells = 0
+        page.ofs_cell_content_area_raw = 4096 # 0x1000
+        page.num_frag_free_bytes = 0
+        page.cell_pointers = []
+        page.cell_content_area = b''
+        page.reserved_space = None
+    init_page(root.pages[1])
     if check:
         root._check()
     return root

@@ -88,7 +88,9 @@ def get_keys(obj):
   def f(k):
     if k[0] == "_": return False
     if "A" <= k[0] <= "Z": return False
-    if k in ("close", "from_bytes", "from_file", "from_io", "pages__to_write"): return False
+    if k in ("close", "from_bytes", "from_file", "from_io"): return False
+    # https://doc.kaitai.io/user_guide.html#_instances_data_beyond_the_sequence
+    if k.endswith("__to_write"): return False
     return True
   keys = list(filter(f, keys))
   return keys
@@ -133,6 +135,24 @@ def get_seq(obj):
             continue
     return seq
 
+def get_instances(obj):
+    # TODO upstream: this should be simpler
+    if not hasattr(obj, "_fetch_instances"):
+        return []
+    _fetch_instances = getattr(obj, "_fetch_instances")
+    lines, firstlineno = inspect.getsourcelines(_fetch_instances)
+    lines.pop(0) # "def _fetch_instances(self):"
+    instances = []
+    for line in lines:
+        line = line.rstrip()
+        # print("line", line)
+        # line: _ = self.pages
+        m = re.match(r"\s+_ = self\.(\w+)", line)
+        if m:
+            instances.append(m[1])
+            continue
+    return instances
+
 def parse_enum_map(lines):
     enum_map = dict()
     line0 = lines.pop(0)
@@ -150,6 +170,8 @@ def parse_enum_map(lines):
     return enum_map
 
 def get_local_key(key, global_names):
+    # # handle array item keys like "some_array[123]"
+    # key = key.replace("[", "_").replace("]", "_")
     num = 1
     local_key = key
     while local_key in global_names:
@@ -221,6 +243,9 @@ def get_mod_class_qualname_list(mod_name):
         # class FormatVersion(IntEnum):
 
 
+debug_init_types = False
+
+
 def codegen(
     obj,
     out,
@@ -236,6 +261,7 @@ def codegen(
     module_map={},
     global_names=[],
 ):
+    print("codegen obj", obj)
     global val # fix print_value
     mod = obj.__class__.__module__
     # member = obj.__class__.__name__ # DatabaseHeader
@@ -272,18 +298,53 @@ def codegen(
         print(f"{ind}def get_{root_name}(_io=None, check=True):", file=out)
         print(f"{ind}{ids}if not _io:", file=out)
         print(f"{ind}{ids}{ids}_io = kaitaistruct.KaitaiStream(io.BytesIO(bytearray(root_size)))", file=out)
-        print(f"{ind}{ids}{on} = {mod}.{member}(_io)", file=out)
-        # TODO remove. this works only for sqlite3.ksy
-        print(f"{ind}{ids}# try to fix root._write", file=out)
-        print(f"{ind}{ids}# https://github.com/kaitai-io/kaitai_struct/issues/1245", file=out)
-        print(f"{ind}{ids}{on}.pages__to_write = False", file=out)
-        # root.pages__to_write = True
+        # TODO also pass parameters to root.__init__
+        """
+        val_params = []
+        if hasattr(val, "__init__"):
+            val_init_sig = inspect.signature(val.__init__)
+            # ...
+        """
+
+        # print(f"{ind}{ids}{on} = {mod}.{member}(_io=_io)", file=out)
+        on_parent_root = f"{on_parent}._root" if on_parent else "None"
+        print(f"{ind}{ids}{on} = {mod}.{member}(_io=_io, _parent={on_parent}, _root={on_parent_root})", file=out)
+
+        # print(f"{ind}{ids}assert {on}._root == {on}", file=out) # debug
+
+        if parse_page_by_page:
+            # TODO remove. this works only for sqlite3.ksy
+            print(f"{ind}{ids}# try to fix root._write", file=out)
+            print(f"{ind}{ids}# https://github.com/kaitai-io/kaitai_struct/issues/1245", file=out)
+            print(f"{ind}{ids}{on}.pages__to_write = False", file=out)
+            # root.pages__to_write = True
     # else:
     #     print(f"{ind}{ids}# non-root init", file=out)
     #     print(f"{ind}{ids}{on} = {mod}.{member}(_io, {on_parent}, {on_parent}._root)", file=out)
-    for key in get_seq(obj):
+    # TODO? interleave "seq" and "instance" keys
+    # TODO rename to seq_key?
+    # for key in get_seq(obj):
+    key_stack = get_seq(obj) + get_instances(obj)
+    while key_stack:
+        key = key_stack.pop(0)
         # print(f"{ind}{ids}# key {key}", file=out)
-        val = getattr(obj, key)
+        print("key", key) # debug
+        val_is_list_item = False
+        if key.endswith("]"):
+            # val is a list item
+            val_is_list_item = True
+            m = re.fullmatch(r"(\w+)\[(\d+)\]", key)
+            val_arr_name, val_arr_idx = m.groups()
+            val_arr_idx = int(val_arr_idx)
+            val_arr = getattr(obj, val_arr_name)
+            val = val_arr[val_arr_idx]
+        else:
+            # FIXME get_seq also returns items where the "if" condition is false
+            # val = getattr(obj, key)
+            try:
+                val = getattr(obj, key)
+            except AttributeError:
+                continue
         """
         print("key", repr(key))
         print("val", repr(val), dir(val))
@@ -298,15 +359,30 @@ def codegen(
 
         # builtin types: int, bytes, ...
         if mod == "builtins":
+            if debug_init_types:
+                print(f"{ind}{ids}# builtin type {type(val).__name__}", file=out)
             if isinstance(val, int) and val > 10:
                 print(f"{ind}{ids}{on}.{key} = {val!r} # {hex(val)}", file=out)
                 continue
             if isinstance(val, bytes) and val == len(val) * b"\x00":
                 # compress null bytes
                 # TODO partial compression of bytestrings
-                print(f"{ind}{ids}{on}.{key} = {len(val)} * b'\\x00'", file=out)
+                if len(val) == 0:
+                    print(f"{ind}{ids}{on}.{key} = b''", file=out)
+                else:
+                    print(f"{ind}{ids}{on}.{key} = {len(val)} * b'\\x00'", file=out)
                 continue
-            # bytes, ...
+            if isinstance(val, list):
+                print(f"{ind}{ids}{on}.{key} = []", file=out)
+                new_keys = []
+                for item_idx in range(len(val)):
+                    new_keys.append(f"{key}[{item_idx}]")
+                # recursion via stack
+                key_stack = new_keys + key_stack
+                # TODO
+                # print(f"{ind}{ids}{on}.{key}.append({xxxxxxx})", file=out)
+                continue
+            # bytes, str, ...
             print(f"{ind}{ids}{on}.{key} = {val!r}", file=out)
             continue
 
@@ -327,6 +403,8 @@ def codegen(
         m = re.match(r"\s*class (\w+)\(([A-Z][A-Za-z0-9]*Enum)\):", lines[0].rstrip())
         if m:
             enum_name, enum_type = m.groups()
+            if debug_init_types:
+                print(f"{ind}{ids}# enum type {enum_name}", file=out)
             enum_map = enum_map_map.get(enum_name) # read cache
             if not enum_map:
                 enum_map = parse_enum_map(lines)
@@ -346,19 +424,50 @@ def codegen(
             print(f"{ind}{ids}{on}.{key} = {mod}.{enum_qualname}.{enum_key} # {val_str}", file=out)
             continue
 
-        # TODO handle list types
-        # m = ...
-        # if m:
-        #     ...
-        #     continue
-
         # user-defined types
+        if debug_init_types:
+            print(f"{ind}{ids}# user-defined type {member}", file=out)
         # https://doc.kaitai.io/serialization.html#_user_defined_types
         # print(f"{ind}{ids}{on}.{key} = root.{member}(root._io, {on}, {on}._root)", file=out) # short
         # print(f"{ind}{ids}{on}.{key} = {mod}.{root_cln}.{member}(root._io, {on}, {on}._root)", file=out) # long
-        print(f"{ind}{ids}{on}.{key} = {mod}.{member}(root._io, {on}, {on}._root)", file=out) # long
+        # print(f"{ind}{ids}{on}.{key} = {mod}.{member}(root._io, {on}, {on}._root)", file=out) # long
+        val_params = []
+        if hasattr(val, "__init__"):
+            val_init_sig = inspect.signature(val.__init__)
+            if str(val_init_sig) != "(_io=None, _parent=None, _root=None)":
+                # print("val_init_sig", repr(val_init_sig))
+                # val.__init__ has extra args
+                # example: page_number in "(page_number, _io=None, _parent=None, _root=None)"
+                for param_name in val_init_sig.parameters.keys():
+                    # print(f"param_name {param_name}")
+                    if param_name in ("_io", "_parent", "_root"):
+                        continue
+                    # FIXME handle user-defined types via recursion
+                    # example:
+                    """
+                    def get_page_number():
+                        # ...
+                    pages.append(BtreePage(page_number=get_page_number(), _io=root._io, _parent=root, _root=root._root))
+                    """
+                    param_val = getattr(val, param_name)
+                    val_params.append(f"{param_name}={param_val}")
+        val_params = "".join(map(lambda arg: arg + ", ", val_params))
+        if val_is_list_item:
+            print(f"{ind}{ids}{on}.{val_arr_name}.append({mod}.{member}({val_params}_io=root._io, _parent={on}, _root={on}._root))", file=out) # long
+        else:
+            print(f"{ind}{ids}{on}.{key} = {mod}.{member}({val_params}_io=root._io, _parent={on}, _root={on}._root)", file=out) # long
+        def get_singular_name(plural_name):
+            # vals -> val
+            # val_list -> val
+            if plural_name.endswith("_list"): return plural_name[:-5]
+            if plural_name.endswith("_array"): return plural_name[:-6]
+            if plural_name.endswith("s"): return plural_name[:-1]
+            return plural_name
         # avoid shadowing global variables
-        local_key = get_local_key(key, global_names)
+        if val_is_list_item:
+            local_key = get_local_key(get_singular_name(val_arr_name), global_names)
+        else:
+            local_key = get_local_key(key, global_names)
         # print(f"{ind}{ids}if 1:", file=out) # no block scope
         # print(f"{ind}{ids}if {local_key} := {on}.{key}:", file=out) # no block scope
         # TypeError: 'int' object does not support the context manager protocol
@@ -366,7 +475,7 @@ def codegen(
         # create block scope
         # this is required to avoid name collisions between scopes
         # https://stackoverflow.com/a/45210833/10440128
-        print(f"{ind}{ids}def init_{key}({local_key}):", file=out) # "init_" prefix
+        print(f"{ind}{ids}def init_{local_key}({local_key}):", file=out) # "init_" prefix
         # print(f"{ind}{ids}def {key}_init({local_key}):", file=out) # "_init" suffix
         # recursion
         codegen(
@@ -382,8 +491,35 @@ def codegen(
             module_map,
             global_names,
         )
-        print(f"{ind}{ids}init_{key}({on}.{key})", file=out) # "init_" prefix
+
+        if val_is_list_item:
+            print(f"{ind}{ids}init_{local_key}({on}.{val_arr_name}[{val_arr_idx}])", file=out) # "init_" prefix
+        else:
+            print(f"{ind}{ids}init_{local_key}({on}.{key})", file=out) # "init_" prefix
+
         # print(f"{ind}{ids}{key}_init({local_key})", file=out) # "_init" suffix
+
+    # for instance_key in get_instances(obj):
+    if 0:
+        # print(f"{ind}{ids}# instance_key {instance_key}", file=out)
+        val = getattr(obj, instance_key)
+        """
+        print("instance_key", repr(instance_key))
+        print("val", repr(val), dir(val))
+        print_value("val.__class__.__module__")
+        print_value("val.__class__.__qualname__")
+        """
+        # obj.__class__.__module__ == 'builtins'
+        # TODO rename to "mod_name"
+        mod = val.__class__.__module__
+        # TODO rename to "member_name"
+        member = val.__class__.__qualname__
+
+        print("obj", obj)
+        print("FIXME instance_key", instance_key, val, mod, member)
+        # FIXME instance_key page 0 builtins int
+        # FIXME instance_key page None builtins NoneType
+        raise 123
 
     # some user-defined types need this
     # example: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
