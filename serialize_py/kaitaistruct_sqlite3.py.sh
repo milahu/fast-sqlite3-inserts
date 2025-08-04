@@ -26,3 +26,9 @@ fi
 
 kaitai-struct-compiler --read-write --no-auto-read --target python --import-path kaitai_struct_formats/ kaitai_struct_formats/database/sqlite3.ksy
 mv sqlite3.py kaitaistruct_sqlite3.py
+
+# https://github.com/kaitai-io/kaitai_struct/issues/1246
+# fix: late binding breaks write_back_handler
+s='s/def handler(parent, _io__raw__m_pages=_io__raw__m_pages):'
+s+='/def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):/'
+sed -i "$s" kaitaistruct_sqlite3.py

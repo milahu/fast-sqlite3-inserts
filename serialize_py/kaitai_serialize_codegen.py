@@ -10,6 +10,9 @@ codegen_database_path = "test_kaitai.py.codegen.db"
 # parse_page_by_page = True
 parse_page_by_page = False
 
+debug_codegen_tree = False
+# debug_codegen_tree = True
+
 import io
 import re
 import os
@@ -96,6 +99,12 @@ def get_keys(obj):
   keys = list(filter(f, keys))
   return keys
 
+def get_unique_list(seq):
+    # https://stackoverflow.com/questions/480214/how-do-i-remove-duplicates-from-a-list-while-preserving-order
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]
+
 def get_seq(obj):
     # TODO upstream: this should be simpler
     if not hasattr(obj, "_read"):
@@ -126,15 +135,35 @@ def get_seq(obj):
         if m:
             seq.append(m[1])
             continue
+        # string type
+        # self.value = (self._io.read_bytes(self.len_value)).decode("UTF-8")
+        m = re.match(r'\s+self\.(\w+) = \(self\._io\.read_bytes\(self\.(\w+)\)\)\.decode\("([^"]+)"\)', line)
+        if m:
+            seq.append(m[1])
+            continue
+        # "repeat: eos" type
+        # self._raw_header = self._io.read_bytes((self.header_size.value - 1))
+        # _io__raw_header = KaitaiStream(BytesIO(self._raw_header))
+        # self.header = Sqlite3.RecordHeader(_io__raw_header, self, self._root)
+        # FIXME also capture init parameters
+        m = re.match(r"\s+self\.(\w+) = (\w+)\.(\w+)\((_io_\w+)(?:, self, self\._root)?\)", line)
+        if m:
+            seq.append(m[1])
+            continue
         # user-defined types
         # self.header = Sqlite3.DatabaseHeader(self._io, self, self._root)
-        m = re.match(r"\s+self\.(\w+) = (\w+)\.(\w+)\(self\._io, self, self\._root\)", line)
+        # self.raw_value = vlq_base128_be.VlqBase128Be(self._io)
+        # m = re.match(r"\s+self\.(\w+) = (\w+)\.(\w+)\(self\._io, self, self\._root\)", line)
+        # FIXME also capture init parameters for parentless objects
+        # - value_serial_type.raw_value = vlq_base128_be.VlqBase128Be(_io=root._io, _parent=value_serial_type, _root=value_serial_type._root)
+        # + value_serial_type.raw_value = vlq_base128_be.VlqBase128Be(_io=root._io)
+        m = re.match(r"\s+self\.(\w+) = (\w+)\.(\w+)\(self\._io(?:, self, self\._root)?\)", line)
         if m:
             # print("m", m.groups())
             # key, mod, member = m.groups()
             seq.append(m[1])
             continue
-    return seq
+    return get_unique_list(seq)
 
 def get_instances(obj):
     # TODO upstream: this should be simpler
@@ -152,7 +181,7 @@ def get_instances(obj):
         if m:
             instances.append(m[1])
             continue
-    return instances
+    return get_unique_list(instances)
 
 def parse_enum_map(lines):
     enum_map = dict()
@@ -243,6 +272,21 @@ def get_mod_class_qualname_list(mod_name):
         # class Sqlite3(ReadWriteKaitaiStruct):
         # class FormatVersion(IntEnum):
 
+def get_singular_name(plural_name):
+    # vals -> val
+    # val_list -> val
+    if plural_name.endswith("_list"): return plural_name[:-5]
+    if plural_name.endswith("_array"): return plural_name[:-6]
+    if plural_name.endswith("s"): return plural_name[:-1]
+    return plural_name
+
+def is_atom(val):
+    if isinstance(val, int): return True
+    if isinstance(val, bytes): return True
+    if isinstance(val, str): return True
+    if isinstance(val, float): return True # ?
+    # list, dict?, user-defined type
+    return False
 
 debug_init_types = False
 
@@ -262,16 +306,19 @@ def codegen(
     module_map={},
     global_names=[],
 ):
-    print("codegen obj", obj)
     global val # fix print_value
+    ind = indent_level * indent_step
+    ids = indent_step
     mod = obj.__class__.__module__
     # member = obj.__class__.__name__ # DatabaseHeader
     member = obj.__class__.__qualname__ # Sqlite3.DatabaseHeader
-    """
-    print("obj.__class__.__module__", obj.__class__.__module__)
-    print("obj.__class__.__name__", obj.__class__.__name__)
-    print("obj.__class__.__qualname__", obj.__class__.__qualname__)
-    """
+    if debug_codegen_tree:
+        # debug
+        print(f"{ind}{ids}# line 290", file=out)
+        print(f"{ind}{ids}# codegen obj {on!r} {obj!r}", obj.__class__.__module__, file=out)
+        print(f"{ind}{ids}# obj.__class__.__module__", obj.__class__.__module__, file=out)
+        print(f"{ind}{ids}# obj.__class__.__name__", obj.__class__.__name__, file=out)
+        print(f"{ind}{ids}# obj.__class__.__qualname__", obj.__class__.__qualname__, file=out)
     is_root = True if on_parent == None else False
     if is_root:
         root = obj
@@ -285,13 +332,13 @@ def codegen(
         global_names.append(mod)
         # TODO add imports of dependencies. example: vlq_base128_be for sqlite3
     # root_cln = root.__class__.__qualname__
-    ind = indent_level * indent_step
-    ids = indent_step
     if is_root:
         print(f"{ind}import io", file=out)
         print(f"{ind}import kaitaistruct", file=out)
         print(f"{ind}import {mod}", file=out)
         # TODO add imports of dependencies. example: vlq_base128_be for sqlite3
+        print(f"{ind}import vlq_base128_be", file=out)
+        print(f"{ind}import pyvlq", file=out)
         # print(f"{ind}# root init", file=out)
         print("", file=out)
         print(f"{ind}root_size = {root._io._size}", file=out)
@@ -322,7 +369,9 @@ def codegen(
     # else:
     #     print(f"{ind}{ids}# non-root init", file=out)
     #     print(f"{ind}{ids}{on} = {mod}.{member}(_io, {on_parent}, {on_parent}._root)", file=out)
-    key_stack = queue.deque(get_seq(obj) + get_instances(obj))
+    key_stack = queue.deque(get_unique_list(get_seq(obj) + get_instances(obj)))
+    if debug_codegen_tree:
+        print("key_stack", list(key_stack))
     while key_stack:
         key = key_stack.popleft()
         # print(f"{ind}{ids}# key {key}", file=out)
@@ -343,19 +392,26 @@ def codegen(
                 val = getattr(obj, key)
             except AttributeError:
                 continue
-        """
-        print("key", repr(key))
-        print("val", repr(val), dir(val))
-        print_value("val.__class__.__module__")
-        print_value("val.__class__.__qualname__")
-        """
+        if debug_codegen_tree:
+            print(f"{ind}{ids}# line 370: key_stack step", file=out)
+            print(f"{ind}{ids}# key_stack {list(key_stack)!r}", file=out)
+            print(f"{ind}{ids}# key {key!r}", file=out)
+            print(f"{ind}{ids}# val {val!r} {dir(val)}", file=out)
+            print(f"{ind}{ids}# val.__class__.__module__ {val.__class__.__module__}", file=out)
+            print(f"{ind}{ids}# val.__class__.__name__ {val.__class__.__name__}", file=out)
+            print(f"{ind}{ids}# val.__class__.__qualname__ {val.__class__.__qualname__}", file=out)
+            if val_is_list_item:
+                print(f"{ind}{ids}# val_is_list_item True", file=out)
+                print(f"{ind}{ids}# val_arr_name {val_arr_name}", file=out)
+                print(f"{ind}{ids}# val_arr_idx {val_arr_idx}", file=out)
+                print(f"{ind}{ids}# val_arr {val_arr}", file=out)
         # obj.__class__.__module__ == 'builtins'
         # TODO rename to "mod_name"
         mod = val.__class__.__module__
         # TODO rename to "member_name"
         member = val.__class__.__qualname__
 
-        # builtin types: int, bytes, ...
+        # builtin types: int, bytes, list, ...
         if mod == "builtins":
             if debug_init_types:
                 print(f"{ind}{ids}# builtin type {type(val).__name__}", file=out)
@@ -371,10 +427,14 @@ def codegen(
                     print(f"{ind}{ids}{on}.{key} = {len(val)} * b'\\x00'", file=out)
                 continue
             if isinstance(val, list):
+                if debug_codegen_tree:
+                    print(f"{ind}{ids}# line 410: val is a list", file=out)
                 print(f"{ind}{ids}{on}.{key} = []", file=out)
                 new_keys = []
                 for item_idx in range(len(val)):
                     new_keys.append(f"{key}[{item_idx}]")
+                if debug_codegen_tree:
+                    print(f"{ind}{ids}# line 415: recursion via key_stack: new_keys {new_keys}", file=out)
                 # recursion via stack
                 new_keys.reverse() # extendleft adds values in reverse order
                 key_stack.extendleft(new_keys)
@@ -432,6 +492,19 @@ def codegen(
         # print(f"{ind}{ids}{on}.{key} = {mod}.{member}(root._io, {on}, {on}._root)", file=out) # long
         val_params = []
         if hasattr(val, "__init__"):
+            if val.__class__.__name__ == "VlqBase128Be":
+                val_expr = f"vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode({val.value}))"
+                if debug_codegen_tree:
+                    print(f"{ind}{ids}# line 480: val_expr", file=out)
+                if val_is_list_item:
+                    print(f"{ind}{ids}{on}.{val_arr_name}.append({val_expr})", file=out)
+                    print(f"{ind}{ids}# fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'", file=out)
+                    print(f"{ind}{ids}{on}.{val_arr_name}[-1]._read()", file=out)
+                else:
+                    print(f"{ind}{ids}{on}.{key} = {val_expr}", file=out)
+                    print(f"{ind}{ids}# fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'", file=out)
+                    print(f"{ind}{ids}{on}.{key}._read()", file=out)
+                continue
             val_init_sig = inspect.signature(val.__init__)
             if str(val_init_sig) != "(_io=None, _parent=None, _root=None)":
                 # print("val_init_sig", repr(val_init_sig))
@@ -449,19 +522,83 @@ def codegen(
                     pages.append(BtreePage(page_number=get_page_number(), _io=root._io, _parent=root, _root=root._root))
                     """
                     param_val = getattr(val, param_name)
-                    val_params.append(f"{param_name}={param_val}")
+                    param_mod = param_val.__class__.__module__
+                    param_member = param_val.__class__.__qualname__
+                    if debug_codegen_tree:
+                        # debug
+                        print(f"{ind}{ids}# line 484 param_val {param_val}", file=out)
+                        print(f"{ind}{ids}# line 484 param_val.__class__.__name__ {param_val.__class__.__name__}", file=out)
+                    if is_atom(param_val):
+                        param_val_expr = param_val
+                    # not reached
+                    # elif param_val.__class__.__name__ == "VlqBase128Be":
+                    #     # TODO move up imports
+                    #     print(f"{ind}{ids}import vlq_base128_be, pyvlq", file=out)
+                    #     print(f"{ind}{ids}# line 489", file=out)
+                    #     param_val_expr = f"vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode({param_val.value}))"
+                    else:
+                        # val_params.append(f"{param_name}={param_val}")
+                        if val_is_list_item:
+                            _on = get_singular_name(val_arr_name)
+                            local_param_name = get_local_key(f"{_on}_{param_name}", global_names)
+                        else:
+                            local_param_name = get_local_key(f"{on}_{param_name}", global_names)
+                        # FIXME refactor
+                        param_val_params = "" # FIXME add params
+                        _param_val_expr = f"{param_mod}.{param_member}({param_val_params}_io=root._io, _parent={on}, _root={on}._root)"
+                        if debug_codegen_tree:
+                            print(f"{ind}{ids}# line 510: recursion via call", file=out)
+                        # print(f"{ind}{ids}# local_param_name {local_param_name}", file=out) # debug
+                        print(f"{ind}{ids}def get_{local_param_name}():", file=out)
+                        print(f"{ind}{ids}{ids}{local_param_name} = {_param_val_expr}", file=out)
+                        # recursion via call
+                        val_before_recursion = val
+                        local_param_name_before_recursion = local_param_name
+                        codegen(
+                            param_val,
+                            out,
+                            local_param_name, # "value_serial_type"
+                            on, # "payload"
+                            root,
+                            root_name,
+                            indent_step,
+                            (indent_level + 1),
+                            enum_map_map,
+                            module_map,
+                            global_names,
+                        )
+                        # assert val_before_recursion == val # AssertionError
+                        # assert local_param_name_before_recursion == local_param_name
+                        # fix: restore loop variables
+                        # TODO more?
+                        val = val_before_recursion
+                        print(f"{ind}{ids}{ids}return {local_param_name}", file=out)
+                        # raise 123 # debug
+                        param_val_expr = f"get_{local_param_name}()"
+                    val_params.append(f"{param_name}={param_val_expr}")
         val_params = "".join(map(lambda arg: arg + ", ", val_params))
+        # FIXME handle parentless objects
+        if debug_codegen_tree:
+            print(f"{ind}{ids}# line 530", file=out)
+            print(f"{ind}{ids}# mod {mod!r}", file=out)
+            print(f"{ind}{ids}# member {member!r}", file=out)
+            print(f"{ind}{ids}# val_params {val_params!r}", file=out)
+        val_expr = f"{mod}.{member}({val_params}_io=root._io, _parent={on}, _root={on}._root)"
+        if val_expr.startswith("kaitaistruct_sqlite3.Sqlite3.Value"):
+            if debug_codegen_tree:
+                # debug
+                # kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root)
+                print(f"{ind}{ids}# line 540", file=out)
+                print(f"{ind}{ids}# val {val}", file=out)
+                print(f"{ind}{ids}# val.__class__ {val.__class__}", file=out)
+                print(f"{ind}{ids}# val.__class__.__module__ {val.__class__.__module__}", file=out)
+                print(f"{ind}{ids}# val.__class__.__name__ {val.__class__.__name__}", file=out)
+                print(f"{ind}{ids}# val.__class__.__qualname__ {val.__class__.__qualname__}", file=out)
+                print(f"{ind}{ids}# val._read {val._read}", file=out)
         if val_is_list_item:
-            print(f"{ind}{ids}{on}.{val_arr_name}.append({mod}.{member}({val_params}_io=root._io, _parent={on}, _root={on}._root))", file=out) # long
+            print(f"{ind}{ids}{on}.{val_arr_name}.append({val_expr})", file=out)
         else:
-            print(f"{ind}{ids}{on}.{key} = {mod}.{member}({val_params}_io=root._io, _parent={on}, _root={on}._root)", file=out) # long
-        def get_singular_name(plural_name):
-            # vals -> val
-            # val_list -> val
-            if plural_name.endswith("_list"): return plural_name[:-5]
-            if plural_name.endswith("_array"): return plural_name[:-6]
-            if plural_name.endswith("s"): return plural_name[:-1]
-            return plural_name
+            print(f"{ind}{ids}{on}.{key} = {val_expr}", file=out)
         # avoid shadowing global variables
         if val_is_list_item:
             local_key = get_local_key(get_singular_name(val_arr_name), global_names)

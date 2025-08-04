@@ -1,6 +1,8 @@
 import io
 import kaitaistruct
 import kaitaistruct_sqlite3
+import vlq_base128_be
+import pyvlq
 
 root_size = 8192
 
@@ -50,8 +52,120 @@ def get_root(_io=None, check=True):
         page.cell_pointers.append(kaitaistruct_sqlite3.Sqlite3.CellPointer(_io=root._io, _parent=page, _root=page._root))
         def init_cell_pointer(cell_pointer):
             cell_pointer.ofs_content = 4044 # 0xfcc
+            cell_pointer.content = kaitaistruct_sqlite3.Sqlite3.TableLeafCell(_io=root._io, _parent=cell_pointer, _root=cell_pointer._root)
+            def init_content(content):
+                content.payload_size = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(50))
+                # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                content.payload_size._read()
+                content.row_id = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(1))
+                # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                content.row_id._read()
+                content.payload = kaitaistruct_sqlite3.Sqlite3.Record(_io=root._io, _parent=content, _root=content._root)
+                def init_payload(payload):
+                    payload.header_size = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(6))
+                    # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                    payload.header_size._read()
+                    payload._raw_header = b'\x17\x15\x15\x01I'
+                    payload.header = kaitaistruct_sqlite3.Sqlite3.RecordHeader(_io=root._io, _parent=payload, _root=payload._root)
+                    def init_header(header):
+                        header.value_types = []
+                        header.value_types.append(kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=header, _root=header._root))
+                        def init_value_type(value_type):
+                            value_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(23))
+                            # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                            value_type.raw_value._read()
+                        init_value_type(header.value_types[0])
+                        header.value_types.append(kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=header, _root=header._root))
+                        def init_value_type(value_type):
+                            value_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(21))
+                            # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                            value_type.raw_value._read()
+                        init_value_type(header.value_types[1])
+                        header.value_types.append(kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=header, _root=header._root))
+                        def init_value_type(value_type):
+                            value_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(21))
+                            # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                            value_type.raw_value._read()
+                        init_value_type(header.value_types[2])
+                        header.value_types.append(kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=header, _root=header._root))
+                        def init_value_type(value_type):
+                            value_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(1))
+                            # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                            value_type.raw_value._read()
+                        init_value_type(header.value_types[3])
+                        header.value_types.append(kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=header, _root=header._root))
+                        def init_value_type(value_type):
+                            value_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(73))
+                            # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                            value_type.raw_value._read()
+                        init_value_type(header.value_types[4])
+                    init_header(payload.header)
+                    payload.values = []
+                    def get_value_serial_type():
+                        value_serial_type = kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=payload, _root=payload._root)
+                        value_serial_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(23))
+                        # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                        value_serial_type.raw_value._read()
+                        return value_serial_type
+                    payload.values.append(kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root))
+                    def init_value(value):
+                        value.value = kaitaistruct_sqlite3.Sqlite3.StringUtf8(len_value=5, _io=root._io, _parent=value, _root=value._root)
+                        def init_value(value):
+                            value.value = 'table'
+                        init_value(value.value)
+                    init_value(payload.values[0])
+                    def get_value_serial_type():
+                        value_serial_type = kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=payload, _root=payload._root)
+                        value_serial_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(21))
+                        # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                        value_serial_type.raw_value._read()
+                        return value_serial_type
+                    payload.values.append(kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root))
+                    def init_value(value):
+                        value.value = kaitaistruct_sqlite3.Sqlite3.StringUtf8(len_value=4, _io=root._io, _parent=value, _root=value._root)
+                        def init_value(value):
+                            value.value = 'test'
+                        init_value(value.value)
+                    init_value(payload.values[1])
+                    def get_value_serial_type():
+                        value_serial_type = kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=payload, _root=payload._root)
+                        value_serial_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(21))
+                        # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                        value_serial_type.raw_value._read()
+                        return value_serial_type
+                    payload.values.append(kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root))
+                    def init_value(value):
+                        value.value = kaitaistruct_sqlite3.Sqlite3.StringUtf8(len_value=4, _io=root._io, _parent=value, _root=value._root)
+                        def init_value(value):
+                            value.value = 'test'
+                        init_value(value.value)
+                    init_value(payload.values[2])
+                    def get_value_serial_type():
+                        value_serial_type = kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=payload, _root=payload._root)
+                        value_serial_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(1))
+                        # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                        value_serial_type.raw_value._read()
+                        return value_serial_type
+                    payload.values.append(kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root))
+                    def init_value(value):
+                        value.value = 2
+                    init_value(payload.values[3])
+                    def get_value_serial_type():
+                        value_serial_type = kaitaistruct_sqlite3.Sqlite3.SerialType(_io=root._io, _parent=payload, _root=payload._root)
+                        value_serial_type.raw_value = vlq_base128_be.VlqBase128Be.from_bytes(pyvlq.encode(73))
+                        # fix: AttributeError: 'VlqBase128Be' object has no attribute 'groups'
+                        value_serial_type.raw_value._read()
+                        return value_serial_type
+                    payload.values.append(kaitaistruct_sqlite3.Sqlite3.Value(serial_type=get_value_serial_type(), _io=root._io, _parent=payload, _root=payload._root))
+                    def init_value(value):
+                        value.value = kaitaistruct_sqlite3.Sqlite3.StringUtf8(len_value=30, _io=root._io, _parent=value, _root=value._root)
+                        def init_value(value):
+                            value.value = 'CREATE TABLE test (id INTEGER)'
+                        init_value(value.value)
+                    init_value(payload.values[4])
+                init_payload(content.payload)
+            init_content(cell_pointer.content)
         init_cell_pointer(page.cell_pointers[0])
-        page.cell_content_area = b'2\x01\x06\x17\x15\x15\x01Itabletesttest\x02CREATE TABLE test (id INTEGER)'
         page.reserved_space = None
     init_page(root.pages[0])
     root.pages.append(kaitaistruct_sqlite3.Sqlite3.BtreePage(page_number=2, _io=root._io, _parent=root, _root=root._root))
@@ -62,7 +176,6 @@ def get_root(_io=None, check=True):
         page.ofs_cell_content_area_raw = 4096 # 0x1000
         page.num_frag_free_bytes = 0
         page.cell_pointers = []
-        page.cell_content_area = b''
         page.reserved_space = None
     init_page(root.pages[1])
     if check:

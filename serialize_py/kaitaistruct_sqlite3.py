@@ -247,8 +247,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
             self._parent = _parent
             self._root = _root
             self.page_number = page_number
-            self._should_write_cell_content_area = False
-            self.cell_content_area__to_write = True
             self._should_write_reserved_space = False
             self.reserved_space__to_write = True
 
@@ -281,7 +279,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 pass
                 self.cell_pointers[i]._fetch_instances()
 
-            _ = self.cell_content_area
             if (self._root.header.page_reserved_space_size != 0):
                 pass
                 _ = self.reserved_space
@@ -290,7 +287,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
 
         def _write__seq(self, io=None):
             super(Sqlite3.BtreePage, self)._write__seq(io)
-            self._should_write_cell_content_area = self.cell_content_area__to_write
             self._should_write_reserved_space = self.reserved_space__to_write
             self._io.write_u1(int(self.page_type))
             self._io.write_u2be(self.first_freeblock)
@@ -336,40 +332,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
 
         def _invalidate_ofs_cell_content_area(self):
             del self._m_ofs_cell_content_area
-        @property
-        def cell_content_area(self):
-            """We parse the first page separate from the 100 byte database header,
-            so for the first page, we have to subtract 100 from the offset,
-            to make the offset relative to our "page".
-            """
-            if self._should_write_cell_content_area:
-                self._write_cell_content_area()
-            if hasattr(self, '_m_cell_content_area'):
-                return self._m_cell_content_area
-
-            _pos = self._io.pos()
-            self._io.seek(((self.ofs_cell_content_area - 100) if (self.page_number == 1) else self.ofs_cell_content_area))
-            self._m_cell_content_area = self._io.read_bytes((self._root.header.usable_size - self.ofs_cell_content_area))
-            self._io.seek(_pos)
-            return getattr(self, '_m_cell_content_area', None)
-
-        @cell_content_area.setter
-        def cell_content_area(self, v):
-            self._m_cell_content_area = v
-
-        def _write_cell_content_area(self):
-            self._should_write_cell_content_area = False
-            _pos = self._io.pos()
-            self._io.seek(((self.ofs_cell_content_area - 100) if (self.page_number == 1) else self.ofs_cell_content_area))
-            self._io.write_bytes(self.cell_content_area)
-            self._io.seek(_pos)
-
-
-        def _check_cell_content_area(self):
-            pass
-            if (len(self.cell_content_area) != (self._root.header.usable_size - self.ofs_cell_content_area)):
-                raise kaitaistruct.ConsistencyError(u"cell_content_area", len(self.cell_content_area), (self._root.header.usable_size - self.ofs_cell_content_area))
-
         @property
         def reserved_space(self):
             if self._should_write_reserved_space:
@@ -1596,6 +1558,8 @@ class Sqlite3(ReadWriteKaitaiStruct):
             self._io = _io
             self._parent = _parent
             self._root = _root
+            self._should_write_content = False
+            self.content__to_write = True
 
         def _read(self):
             self.ofs_content = self._io.read_u2be()
@@ -1603,15 +1567,111 @@ class Sqlite3(ReadWriteKaitaiStruct):
 
         def _fetch_instances(self):
             pass
+            _ = self.content
+            _on = self._parent.page_type
+            if _on == Sqlite3.BtreePageType.table_leaf_page:
+                pass
+                self.content._fetch_instances()
+            elif _on == Sqlite3.BtreePageType.table_interior_page:
+                pass
+                self.content._fetch_instances()
+            elif _on == Sqlite3.BtreePageType.index_leaf_page:
+                pass
+                self.content._fetch_instances()
+            elif _on == Sqlite3.BtreePageType.index_interior_page:
+                pass
+                self.content._fetch_instances()
 
 
         def _write__seq(self, io=None):
             super(Sqlite3.CellPointer, self)._write__seq(io)
+            self._should_write_content = self.content__to_write
             self._io.write_u2be(self.ofs_content)
 
 
         def _check(self):
             pass
+
+        @property
+        def content(self):
+            if self._should_write_content:
+                self._write_content()
+            if hasattr(self, '_m_content'):
+                return self._m_content
+
+            _pos = self._io.pos()
+            self._io.seek((((-100 if (self._parent.page_number == 1) else 0) + ((self._parent.page_number - 1) * self._root.header.page_size)) + self.ofs_content))
+            _on = self._parent.page_type
+            if _on == Sqlite3.BtreePageType.table_leaf_page:
+                pass
+                self._m_content = Sqlite3.TableLeafCell(self._io, self, self._root)
+                self._m_content._read()
+            elif _on == Sqlite3.BtreePageType.table_interior_page:
+                pass
+                self._m_content = Sqlite3.TableInteriorCell(self._io, self, self._root)
+                self._m_content._read()
+            elif _on == Sqlite3.BtreePageType.index_leaf_page:
+                pass
+                self._m_content = Sqlite3.IndexLeafCell(self._io, self, self._root)
+                self._m_content._read()
+            elif _on == Sqlite3.BtreePageType.index_interior_page:
+                pass
+                self._m_content = Sqlite3.IndexInteriorCell(self._io, self, self._root)
+                self._m_content._read()
+            self._io.seek(_pos)
+            return getattr(self, '_m_content', None)
+
+        @content.setter
+        def content(self, v):
+            self._m_content = v
+
+        def _write_content(self):
+            self._should_write_content = False
+            _pos = self._io.pos()
+            self._io.seek((((-100 if (self._parent.page_number == 1) else 0) + ((self._parent.page_number - 1) * self._root.header.page_size)) + self.ofs_content))
+            _on = self._parent.page_type
+            if _on == Sqlite3.BtreePageType.table_leaf_page:
+                pass
+                self.content._write__seq(self._io)
+            elif _on == Sqlite3.BtreePageType.table_interior_page:
+                pass
+                self.content._write__seq(self._io)
+            elif _on == Sqlite3.BtreePageType.index_leaf_page:
+                pass
+                self.content._write__seq(self._io)
+            elif _on == Sqlite3.BtreePageType.index_interior_page:
+                pass
+                self.content._write__seq(self._io)
+            self._io.seek(_pos)
+
+
+        def _check_content(self):
+            pass
+            _on = self._parent.page_type
+            if _on == Sqlite3.BtreePageType.table_leaf_page:
+                pass
+                if self.content._root != self._root:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._root, self._root)
+                if self.content._parent != self:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._parent, self)
+            elif _on == Sqlite3.BtreePageType.table_interior_page:
+                pass
+                if self.content._root != self._root:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._root, self._root)
+                if self.content._parent != self:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._parent, self)
+            elif _on == Sqlite3.BtreePageType.index_leaf_page:
+                pass
+                if self.content._root != self._root:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._root, self._root)
+                if self.content._parent != self:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._parent, self)
+            elif _on == Sqlite3.BtreePageType.index_interior_page:
+                pass
+                if self.content._root != self._root:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._root, self._root)
+                if self.content._parent != self:
+                    raise kaitaistruct.ConsistencyError(u"content", self.content._parent, self)
 
 
     class Value(ReadWriteKaitaiStruct):
@@ -2044,8 +2104,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                # NOTE early binding of i
-                # https://github.com/kaitai-io/kaitai_struct/issues/1246
                 def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
@@ -2059,7 +2117,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                # NOTE early binding of i
                 def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
@@ -2073,7 +2130,6 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                # NOTE early binding of i
                 def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
