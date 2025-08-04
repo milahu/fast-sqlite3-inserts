@@ -14,6 +14,7 @@ import io
 import re
 import os
 import sys
+import queue
 import shlex
 import inspect
 import subprocess
@@ -321,12 +322,9 @@ def codegen(
     # else:
     #     print(f"{ind}{ids}# non-root init", file=out)
     #     print(f"{ind}{ids}{on} = {mod}.{member}(_io, {on_parent}, {on_parent}._root)", file=out)
-    # TODO? interleave "seq" and "instance" keys
-    # TODO rename to seq_key?
-    # for key in get_seq(obj):
-    key_stack = get_seq(obj) + get_instances(obj)
+    key_stack = queue.deque(get_seq(obj) + get_instances(obj))
     while key_stack:
-        key = key_stack.pop(0)
+        key = key_stack.popleft()
         # print(f"{ind}{ids}# key {key}", file=out)
         print("key", key) # debug
         val_is_list_item = False
@@ -378,7 +376,8 @@ def codegen(
                 for item_idx in range(len(val)):
                     new_keys.append(f"{key}[{item_idx}]")
                 # recursion via stack
-                key_stack = new_keys + key_stack
+                new_keys.reverse() # extendleft adds values in reverse order
+                key_stack.extendleft(new_keys)
                 # TODO
                 # print(f"{ind}{ids}{on}.{key}.append({xxxxxxx})", file=out)
                 continue
