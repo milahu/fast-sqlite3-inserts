@@ -2044,7 +2044,9 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                def handler(parent, _io__raw__m_pages=_io__raw__m_pages):
+                # NOTE early binding of i
+                # https://github.com/kaitai-io/kaitai_struct/issues/1246
+                def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
                         raise kaitaistruct.ConsistencyError(u"raw(pages)", len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]), ((self.header.page_size - 100) if (i == 0) else self.header.page_size))
@@ -2057,7 +2059,8 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                def handler(parent, _io__raw__m_pages=_io__raw__m_pages):
+                # NOTE early binding of i
+                def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
                         raise kaitaistruct.ConsistencyError(u"raw(pages)", len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]), ((self.header.page_size - 100) if (i == 0) else self.header.page_size))
@@ -2070,7 +2073,8 @@ class Sqlite3(ReadWriteKaitaiStruct):
                 self._io.add_child_stream(_io__raw__m_pages)
                 _pos2 = self._io.pos()
                 self._io.seek(self._io.pos() + (((self.header.page_size - 100) if (i == 0) else self.header.page_size)))
-                def handler(parent, _io__raw__m_pages=_io__raw__m_pages):
+                # NOTE early binding of i
+                def handler(parent, _io__raw__m_pages=_io__raw__m_pages, i=i):
                     self._raw__m_pages.append(_io__raw__m_pages.to_byte_array())
                     if (len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]) != ((self.header.page_size - 100) if (i == 0) else self.header.page_size)):
                         raise kaitaistruct.ConsistencyError(u"raw(pages)", len(self._raw__m_pages[(len(self._raw__m_pages) - 1)]), ((self.header.page_size - 100) if (i == 0) else self.header.page_size))
